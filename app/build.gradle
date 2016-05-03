@@ -15,12 +15,17 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
         }
 
-        buildTypes.each {
-                    it.buildConfigField 'String', 'OPEN_WEATHER_MAP_API_KEY', "\"0601e2667183a62a5f42233152508cb2\""
-        }
     }
+    buildTypes.each {
+        it.buildConfigField 'String', 'OPEN_WEATHER_MAP_API_KEY', "\"0601e2667183a62a5f42233152508cb2\""
+    }
+
+//    buildTypes.each {
+//        it.buildConfigField 'String', 'OPEN_WEATHER_MAP_API_KEY', "\"0601e2667183a62a5f42233152508cb2\""
+//    }
 }
 
 dependencies {
