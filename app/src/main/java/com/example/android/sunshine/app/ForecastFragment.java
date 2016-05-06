@@ -4,9 +4,12 @@ package com.example.android.sunshine.app;
  * Created by Kennan on 5/1/16.
  */
 
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.v4.app.Fragment;
 import android.text.format.Time;
 import android.util.Log;
@@ -16,6 +19,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
@@ -33,13 +37,21 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.NoSuchElementException;
 
 /**
  * A placeholder fragment containing a simple view.
  */
 public class ForecastFragment extends Fragment {
+    private ArrayAdapter<String> mForecastAdapter;
 
     public ForecastFragment() {
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        updateWeather();
     }
 
     @Override
@@ -57,17 +69,23 @@ public class ForecastFragment extends Fragment {
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
         if (id == R.id.action_refresh) {
-            FetchWeatherTask fetchWeatherTask = new FetchWeatherTask();
-            fetchWeatherTask.execute("94043");
+            updateWeather();
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
+    private void updateWeather() {
+        FetchWeatherTask fetchWeatherTask = new FetchWeatherTask();
+        SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getActivity());
+        String location = pref.getString(getString(R.string.pref_location_key), getString(R.string.pref_location_default));
+        fetchWeatherTask.execute(location);
+    }
+
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        ArrayAdapter<String> mForecastAdapter;
         String[] data = {
                 "Mon 6/23 - Sunny - 31/17",
                 "Tue 6/24 - Foggy - 21/8",
@@ -78,23 +96,32 @@ public class ForecastFragment extends Fragment {
                 "Sun 6/29 - Sunny - 20/7"
         };
         View rootView = inflater.inflate(R.layout.fragment_main, container, false);
-        List<String> weekForecast = new ArrayList<String>(Arrays.asList(data));
+        final List<String> weekForecast = new ArrayList<String>(Arrays.asList(data));
         mForecastAdapter = new ArrayAdapter<String>(
                 getActivity(),
                 R.layout.list_item_forecast,
                 R.id.list_item_forecast_textview,
-                weekForecast
+                new ArrayList<String>()
         );
         ListView listView = (ListView) rootView.findViewById(R.id.listview_forecast);
         listView.setAdapter(mForecastAdapter);
-
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                String forecast = mForecastAdapter.getItem(i);
+//                Toast.makeText(getActivity(), forecast, Toast.LENGTH_SHORT).show();
+                Intent detailIntent = new Intent(getActivity(), DetailActivity.class).putExtra(Intent.EXTRA_TEXT, forecast);
+                startActivity(detailIntent);
+//                Log.v(this.getClass().toString(), "is done.");
+            }
+        });
         return rootView;
     }
 
 
-
     public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
         private final String LOG_TAG = FetchWeatherTask.class.getSimpleName();
+
 
         protected String[] doInBackground(String... params) {
             if (params.length == 0) {
@@ -126,8 +153,6 @@ public class ForecastFragment extends Fragment {
                         .appendQueryParameter(APP_PARAM, BuildConfig.OPEN_WEATHER_MAP_API_KEY)
                         .build();
                 URL url = new URL(builtUri.toString());
-                Log.v(LOG_TAG, "Built URL: " + url);
-
 
                 // Create the request to OpenWeatherMap, and open the connection
                 urlConnection = (HttpURLConnection) url.openConnection();
@@ -156,7 +181,6 @@ public class ForecastFragment extends Fragment {
                     forecastJsonStr = null;
                 }
                 forecastJsonStr = buffer.toString();
-                Log.v(LOG_TAG, "ForecastJson: " + forecastJsonStr);
                 return getWeatherDataFromJson(forecastJsonStr, numDays);
 
             } catch (IOException e1) {
@@ -167,7 +191,7 @@ public class ForecastFragment extends Fragment {
                 forecastJsonStr = null;
             } catch (JSONException e2) {
                 Log.e("PlaceholderFragment", "Error ", e2);
-            }finally {
+            } finally {
                 if (urlConnection != null) {
                     urlConnection.disconnect();
                 }
@@ -182,10 +206,20 @@ public class ForecastFragment extends Fragment {
             return null;
         }
 
+        @Override
+        protected void onPostExecute(String[] results) {
+            if (results != null) {
+                mForecastAdapter.clear();
+                for (String eachDayForecast : results) {
+                    mForecastAdapter.add(eachDayForecast);
+                }
+            }
+        }
+
         /* The date/time conversion code is going to be moved outside the asynctask later,
-         * so for convenience we're breaking it out into its own method now.
-         */
-        private String getReadableDateString(long time){
+                 * so for convenience we're breaking it out into its own method now.
+                 */
+        private String getReadableDateString(long time) {
             // Because the API returns a unix timestamp (measured in seconds),
             // it must be converted to milliseconds in order to be converted to valid date.
             SimpleDateFormat shortenedDateFormat = new SimpleDateFormat("EEE MMM dd");
@@ -200,6 +234,13 @@ public class ForecastFragment extends Fragment {
             long roundedHigh = Math.round(high);
             long roundedLow = Math.round(low);
 
+            SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getActivity());
+            String currentUnit = pref.getString(getString(R.string.pref_units_key), getString(R.string.pref_units_metric));
+//            Log.v("currentUnit", currentUnit);
+            if (currentUnit.equals("imperial")){
+                roundedHigh = (roundedHigh * 9 / 5) + 32;
+                roundedLow = (roundedLow * 9 / 5) + 32;
+            }
             String highLowStr = roundedHigh + "/" + roundedLow;
             return highLowStr;
         }
@@ -207,7 +248,7 @@ public class ForecastFragment extends Fragment {
         /**
          * Take the String representing the complete forecast in JSON Format and
          * pull out the data we need to construct the Strings needed for the wireframes.
-         *
+         * <p/>
          * Fortunately parsing is easy:  constructor takes the JSON string and converts it
          * into an Object hierarchy for us.
          */
@@ -243,7 +284,7 @@ public class ForecastFragment extends Fragment {
             dayTime = new Time();
 
             String[] resultStrs = new String[numDays];
-            for(int i = 0; i < weatherArray.length(); i++) {
+            for (int i = 0; i < weatherArray.length(); i++) {
                 // For now, using the format "Day, description, hi/low"
                 String day;
                 String description;
@@ -257,7 +298,7 @@ public class ForecastFragment extends Fragment {
                 // "this saturday".
                 long dateTime;
                 // Cheating to convert this to UTC time, which is what we want anyhow
-                dateTime = dayTime.setJulianDay(julianStartDay+i);
+                dateTime = dayTime.setJulianDay(julianStartDay + i);
                 day = getReadableDateString(dateTime);
 
                 // description is in a child array called "weather", which is 1 element long.
@@ -272,10 +313,6 @@ public class ForecastFragment extends Fragment {
 
                 highAndLow = formatHighLows(high, low);
                 resultStrs[i] = day + " - " + description + " - " + highAndLow;
-            }
-
-            for (String s : resultStrs) {
-                Log.v(LOG_TAG, "Forecast entry: " + s);
             }
             return resultStrs;
 
